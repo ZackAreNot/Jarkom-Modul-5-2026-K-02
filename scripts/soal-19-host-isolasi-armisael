@@ -1,0 +1,26 @@
+#!/bin/sh
+# ==============================================================================
+# Soal 19 - Isolasi Total Armisael (192.212.4.83) dari Sisi Host/Bridge GNS3
+#   Dijalankan di host/VM GNS3 (bukan di dalam container Armisael) agar trafik
+#   Armisael ke gateway Shigeru maupun tetangga satu switch Zeruel ikut terputus,
+#   tanpa mengganggu Zeruel.
+# ==============================================================================
+
+set -u
+
+ARMISAEL_IP="${1:-192.212.4.83}"
+ARMISAEL_MAC="${2:-02:42:54:94:a4:00}"
+
+if [ -z "$ARMISAEL_MAC" ]; then
+    ARMISAEL_MAC="$(arp -an 2>/dev/null | awk -v ip="($ARMISAEL_IP)" '$0 ~ ip {print $4; exit}')"
+fi
+
+if command -v ebtables >/dev/null 2>&1 && [ -n "$ARMISAEL_MAC" ]; then
+    ebtables -D FORWARD -s "$ARMISAEL_MAC" -j DROP 2>/dev/null || true
+    ebtables -D FORWARD -d "$ARMISAEL_MAC" -j DROP 2>/dev/null || true
+    ebtables -A FORWARD -s "$ARMISAEL_MAC" -j DROP
+    ebtables -A FORWARD -d "$ARMISAEL_MAC" -j DROP
+    echo "[OK] ebtables FORWARD DROP aktif untuk MAC $ARMISAEL_MAC ($ARMISAEL_IP)."
+else
+    echo "[!] ebtables atau MAC Armisael belum terdeteksi otomatis. Isi MAC: sh $0 192.212.4.83 <aa:bb:cc:dd:ee:ff>"
+fi

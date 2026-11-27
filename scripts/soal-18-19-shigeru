@@ -1,0 +1,42 @@
+#!/bin/sh
+# ==============================================================================
+# /root/shigeru.sh - Soal 18 & 19: Gerbang Monolith/Radar & Isolasi Armisael
+#   - Node di dalam zona (Switch-Monolith & Switch-Radar) boleh memulai koneksi keluar.
+#   - Koneksi baru dari sisi Gendou (eth0) diblokir tanpa daftar subnet satu per satu,
+#     kecuali ping (ICMP echo-request) dari subnet Switch-Terminal (192.212.4.56/29).
+#   - Trafik lintas-subnet terkait Armisael (192.212.4.83) di-DROP di Shigeru
+#     (isolasi Layer 2 satu switch dilakukan di host/bridge GNS3, bukan di Armisael).
+# Praktikum Jarkom Modul 5 - Kelompok K-02
+# ==============================================================================
+
+set -u
+
+ARMISAEL_IP="192.212.4.83"
+TERMINAL_SUBNET="192.212.4.56/29"
+RADAR_SUBNET="192.212.4.88/29"
+MAKOTO_GW="192.212.4.170"
+GENDOU_GW="192.212.4.129"
+
+sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+ip route replace default via "$GENDOU_GW" dev eth0
+ip route replace "$RADAR_SUBNET" via "$MAKOTO_GW" dev eth2
+
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t nat -X
+iptables -P INPUT ACCEPT
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+
+# Isolasi Armisael (192.212.4.83) di lapisan router Shigeru
+iptables -A FORWARD -s "$ARMISAEL_IP" -j DROP
+iptables -A FORWARD -d "$ARMISAEL_IP" -j DROP
+iptables -A INPUT -s "$ARMISAEL_IP" -j DROP
+
+# Gerbang Zona Sensitif Monolith & Radar (sisi luar menghadap Gendou = eth0)
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i eth0 -s "$TERMINAL_SUBNET" -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A FORWARD -i eth0 -j DROP
+
+echo "[OK] Shigeru aktif: gerbang zona sensitif & isolasi router Armisael terpasang."

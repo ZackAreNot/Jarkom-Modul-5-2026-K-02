@@ -1,0 +1,48 @@
+#!/bin/sh
+# ==============================================================================
+# Soal 20 - Uji Kebakaran Geofront (Simpan & Pemulihan 2x Berturut-turut)
+#   Penggunaan di node target (misal Gendou, Shigeru, Magi-Casper):
+#     sh /root/uji-kebakaran.sh <nama_node> <path_skrip_pemulihan>
+#   Contoh:
+#     sh /root/uji-kebakaran.sh Magi-Casper /root/casper.sh
+# ==============================================================================
+
+set -u
+
+NODE_NAME="${1:-node}"
+RESTORE_SCRIPT="${2:-}"
+
+if [ -z "$RESTORE_SCRIPT" ] || [ ! -x "$RESTORE_SCRIPT" ]; then
+    echo "Penggunaan: $0 <nama_node> <path_skrip_pemulihan>"
+    exit 1
+fi
+
+RULES_FILE="/root/${NODE_NAME}.rules"
+
+# 1. Simpan rule aktif saat ini
+iptables-save > "$RULES_FILE"
+
+# 2. Hapus seluruh rule iptables (filter & nat) dan kembalikan policy ACCEPT
+iptables -F
+iptables -X
+iptables -t nat -F
+iptables -t nat -X
+iptables -P INPUT ACCEPT
+iptables -P FORWARD ACCEPT
+iptables -P OUTPUT ACCEPT
+
+# 3. Pemulihan PERTAMA
+iptables-restore < "$RULES_FILE"
+sh "$RESTORE_SCRIPT"
+FILTER_1="$(iptables -S | wc -l)"
+NAT_1="$(iptables -t nat -S | wc -l)"
+
+# 4. Pemulihan KEDUA (berturut-turut)
+iptables-restore < "$RULES_FILE"
+sh "$RESTORE_SCRIPT"
+FILTER_2="$(iptables -S | wc -l)"
+NAT_2="$(iptables -t nat -S | wc -l)"
+
+echo "=== Hasil Uji Kebakaran: $NODE_NAME ==="
+echo "Pemulihan ke-1 -> filter: $FILTER_1 baris | nat: $NAT_1 baris"
+echo "Pemulihan ke-2 -> filter: $FILTER_2 baris | nat: $NAT_2 baris"

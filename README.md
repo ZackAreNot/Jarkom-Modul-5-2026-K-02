@@ -446,4 +446,158 @@ Rule `OUTPUT -p udp --dport 53 -j DROP` dihapus sehingga DNS keluar kembali berf
 
 > Bagian ini dikerjakan oleh **Naila Anggun Eka Rizqy** (5027251122).
 
-*(Placeholder untuk Soal 13 – 20 — akan digabungkan setelah bagian Babak 3 & Final selesai.)*
+## Soal 13 — Brankas Balthasar
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Karena `Magi-Melchior` (`192.212.4.60`) berada satu switch Layer 2 (`Switch-Terminal`, `192.212.4.56/29`) dengan `Magi-Balthasar` (`192.212.4.59`), pembatasan diterapkan langsung pada firewall host `Magi-Balthasar` melalui [`scripts/soal-13-balthasar.sh`](./scripts/soal-13-balthasar.sh) (dijalankan sebagai `/root/balthasar.sh`):
+- Mengizinkan `lo` dan koneksi `ESTABLISHED,RELATED` agar `Magi-Balthasar` tetap bisa melakukan `ping 8.8.8.8` dan menerima balasannya.
+- Mengizinkan TCP port `5000` dan `5001` hanya untuk `Magi-Casper` (`192.212.4.58`) serta seluruh **Pilot** (`Unit-01` `192.212.4.66`, `Unit-02` `192.212.4.67`, `Unit-00` `192.212.4.68`, dan `Sachiel` `192.212.3.130`).
+- Menolak koneksi lain (termasuk tetangga satu switch `Magi-Melchior` dan `Lilith`) ke port `5000` dan `5001` secara langsung memakai `-j REJECT --reject-with tcp-reset` sehingga koneksi langsung gagal (`exit=1`) tanpa menunggu timeout, sambil menjaga lalu lintas lain tetap berjalan normal.
+
+### Bukti dan Hasil
+1. **Koneksi `nc` dari `Unit-01` ke Port `5000` & `5001` Berhasil (`exit=0`) serta Log di `Magi-Balthasar`:**
+   ![Uji Koneksi Unit-01 ke Balthasar](Screenshot/soal-13/unit01-nc-balthasar.png)
+   *Pengiriman pesan dari `Unit-01` (`192.212.4.66`) ke `192.212.4.59` port `5000` dan `5001` berhasil (`exit=0`) dan tercatat pada log listener `Magi-Balthasar`.*
+
+2. **Koneksi dari `Lilith` & `Magi-Melchior` Ditolak Seketika serta `Magi-Balthasar` Tetap Bisa Ping `8.8.8.8`:**
+   ![Penolakan Lilith dan Melchior serta Ping Balthasar](Screenshot/soal-13/balthasar-reject-dan-ping.png)
+   *Percobaan `nc` dari `Lilith` (`192.212.4.74`) dan `Magi-Melchior` (`192.212.4.60`) ke port `5000` dan `5001` langsung ditolak (`exit=1` dalam waktu singkat, tidak menggantung), sementara `Magi-Balthasar` tetap dapat mem-ping `8.8.8.8` dengan `0% packet loss`.*
+
+   ## Soal 14 — Jam Kunjungan Sang Pinguin
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Akses ICMP (`ping`) dan TCP port `80` menuju **`Pen-Pen`** (`192.212.3.194`) diatur melalui [`scripts/soal-14-penpen.sh`](./scripts/soal-14-penpen.sh) (disimpan di `/root/penpen.sh` dan dipanggil otomatis dari `/etc/network/interfaces`) menggunakan modul `iptables -m time`. Karena `iptables` membaca waktu dalam zona **UTC** (7 jam lebih lambat dari WIB), jadwal pada variabel awal skrip disesuaikan dengan konversi tersebut:
+- **Pilot** (`Unit-01` `192.212.4.66`, `Unit-02` `192.212.4.67`, `Unit-00` `192.212.4.68`, `Sachiel` `192.212.3.130`): `08.00–16.00 WIB` Senin–Jumat $\rightarrow$ `PILOT_START="01:00"`, `PILOT_STOP="09:00"`, `PILOT_DAYS="Mon,Tue,Wed,Thu,Fri"` (di luar jadwal di-`DROP`).
+- **Staf Geofront** (`Lilith` `192.212.4.74`, `Adam` `192.212.4.75`): `17.00–23.00 WIB` setiap hari $\rightarrow$ `STAF_START="10:00"`, `STAF_STOP="16:00"` (di luar jadwal di-`DROP`).
+- **Terduga Dummy System** (`Entry-Plug` `192.212.4.50`, `Dummy-Plug` `192.212.4.51`, `Spy` `192.212.4.102`): selalu di-`DROP`.
+- **Lainnya**: bebas tanpa batasan jadwal.
+
+### Bukti dan Hasil
+1. **Kondisi 1 — Variabel Jadwal Disesuaikan Cocok dengan Jam UTC Saat Pengujian (`date -u`):**
+   ![Uji Ping Pen-Pen Jadwal Cocok](Screenshot/soal-14/penpen-jadwal-cocok.png)
+   *Saat variabel jadwal disesuaikan mencakup jam UTC aktual, `Unit-01` (Pilot) dan `Lilith` (Staf Geofront) berhasil mem-ping `Pen-Pen` (`0% packet loss`), sedangkan `Spy` (Terduga Dummy System) tetap gagal (`100% packet loss`).*
+
+2. **Kondisi 2 — Variabel Jadwal Diubah Tidak Cocok dengan Jam UTC Saat Pengujian:**
+   ![Uji Ping Pen-Pen Jadwal Tidak Cocok](Screenshot/soal-14/penpen-jadwal-tidak-cocok.png)
+   *Saat variabel jadwal digeser ke luar jam UTC aktual, `Unit-01`, `Lilith`, dan `Spy` seluruhnya mengalami `100% packet loss` saat mem-ping `192.212.3.194`.*
+
+   ## Soal 15 — Banjir Ping di Pusat Komando
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Pembatasan laju ping masuk dikonfigurasi pada **`Tokyo3-Core`** (`192.212.4.106`) melalui fungsi `apply_firewall()` di dalam [`scripts/soal-15-16-tokyo3.sh`](./scripts/soal-15-16-tokyo3.sh) (disimpan sebagai `/root/tokyo3.sh` dan dipanggil otomatis dari `/etc/network/interfaces`):
+- Aturan pada chain `INPUT` menyaring secara spesifik paket `-p icmp --icmp-type echo-request` dengan `-m limit --limit 5/sec --limit-burst 5 -j ACCEPT`, diikuti `-p icmp --icmp-type echo-request -j DROP` untuk membuang kelebihan paket di atas batas maksimal 5 ping per detik.
+- Karena aturan hanya mencocokkan `echo-request` masuk pada `INPUT`, ping normal di bawah batas tidak terganggu dan balasan (`echo-reply`) atas ping yang dikirim `Tokyo3-Core` sendiri tetap lolos tanpa terkena rate limit.
+
+### Bukti dan Hasil
+1. **Uji Ping Rapat (`ping -i 0.1 -c 50`) vs Ping Normal Jeda Minimal 3 Detik dari `Lilith`:**
+   ![Uji Flood Ping dan Normal Ping ke Tokyo3-Core](Screenshot/soal-15/tokyo3-ping-limit.png)
+   *Saat `Lilith` mengirim ping rapat (`ping -i 0.1 -c 50` ke `192.212.4.106`), sebagian paket terbuang (`packet loss` sekitar 50%), sedangkan saat dikirim dengan jeda minimal 3 detik antar paket (`ping -i 3 -c 4`), seluruh paket berhasil terjawab dengan `0% packet loss`.*
+
+2. **Counter Rule Pembuangan (`DROP`) & Ping Keluar dari `Tokyo3-Core`:**
+   ![Counter Rate Limit Tokyo3-Core](Screenshot/soal-15/tokyo3-counter-drop.png)
+   *Output `iptables -L INPUT -n -v --line-numbers` menunjukkan counter pada rule `DROP` naik setelah banjir ping, sementara ping yang dimulai dari `Tokyo3-Core` sendiri berjalan normal.*
+
+## Soal 16 — Pencuri yang Mencoba Setiap Pintu
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Pada **`Tokyo3-Core`** (`192.212.4.106`), aturan deteksi percobaan akses ke port sensitif dari **`Dummy-Plug`** (`192.212.4.51`) ditambahkan ke dalam fungsi `apply_firewall()` pada [`scripts/soal-15-16-tokyo3.sh`](./scripts/soal-15-16-tokyo3.sh) (disimpan di `/root/tokyo3.sh`):
+- Setiap paket TCP `SYN` dari `192.212.4.51` menuju port `22`, `23`, dan `3306` dicatat melalui target `-j LOG --log-prefix "SCAN-NERV: "` sebelum diteruskan ke `-j REJECT --reject-with tcp-reset` agar koneksi langsung ditolak seketika tanpa menggantung[cite: 4, 7, 12, 13].
+- Port layanan `80` (`Welcome to Tokyo3-Core`) dan `8080` (`syifa imutz`) tetap terbuka dan dapat diakses normal, serta lalu lintas dari node lain tidak terganggu[cite: 10, 12, 13].
+
+### Bukti dan Hasil
+1. **Uji `nc -w` dari `Dummy-Plug` ke Port `22`, `23`, `3306` (Ditolak Seketika) vs Port `80` & `8080` (Berhasil):**
+   ![Uji Port Scan Dummy-Plug ke Tokyo3-Core](Screenshot/soal-16/dummy-scan-tokyo3.png)
+   *Percobaan koneksi dari `Dummy-Plug` (`192.212.4.51`) ke port `22`, `23`, dan `3306` pada `192.212.4.106` langsung ditolak (`exit=1`), sedangkan akses ke port `80` dan `8080` tetap berhasil (`exit=0`)[cite: 12, 13].*
+
+2. **Counter Rule `LOG` (`SCAN-NERV:`) dan `REJECT` pada `iptables -L INPUT -n -v` di `Tokyo3-Core`:**
+   ![Counter Log SCAN-NERV Tokyo3-Core](Screenshot/soal-16/tokyo3-log-counter.png)
+   *Counter paket dan byte pada rule `LOG` dengan prefix `"SCAN-NERV: "` serta rule `REJECT` di `Tokyo3-Core` meningkat sesuai jumlah percobaan koneksi ke port `22`, `23`, dan `3306`[cite: 12, 13].*
+
+## Soal 17 — Sihir Hitam di Jalur Paket
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Pada router gateway `Switch-Terminal`, yaitu **`Fuyutsuki`**, aturan pengalihan paket dikonfigurasi melalui [`scripts/soal-17-fuyutsuki-trap.sh`](./scripts/soal-17-fuyutsuki-trap.sh) (disimpan di `/root/fuyutsuki-trap.sh` dan dipanggil otomatis dari `/etc/network/interfaces`):
+- Aturan `iptables -t nat -A PREROUTING -s 192.212.4.58 -d 192.212.4.82 -p tcp -j DNAT --to-destination 192.212.3.194` mengalihkan koneksi TCP dari **`Magi-Casper`** (`192.212.4.58`) menuju **`Zeruel`** (`192.212.4.82`) agar diarahkan ke **`Pen-Pen`** (`192.212.3.194`).
+- Aturan `iptables -t nat -A POSTROUTING -s 192.212.4.58 -d 192.212.3.194 -p tcp -j SNAT --to-source 192.212.4.161` memastikan paket balasan dari `Pen-Pen` melewati `Fuyutsuki` dan dipetakan balik oleh `conntrack` seolah datang dari IP `Zeruel` (`192.212.4.82`) tanpa disadari `Magi-Casper`.
+- Karena penyaringan hanya mencocokkan `-p tcp`, trafik ICMP (`ping`) dari `Magi-Casper` ke `Zeruel` tidak ikut dialihkan.
+
+### Bukti dan Hasil
+1. **Pengiriman Pesan TCP Port `9000` dari `Magi-Casper` ke `192.212.4.82` & Log pada `Pen-Pen` vs `Zeruel`:**
+   ![Pengalihan TCP 9000 ke Pen-Pen](Screenshot/soal-17/casper-dnat-penpen-zeruel.png)
+   *Pesan yang dikirim `Magi-Casper` ke port `9000` IP `Zeruel` tercatat di `/tmp/penpen-9000.log` pada `Pen-Pen`, sedangkan `/tmp/zeruel-9000.log` pada `Zeruel` tetap kosong.*
+
+2. **Tabel `conntrack` dan Counter NAT di `Fuyutsuki`:**
+   ![Tabel Conntrack Fuyutsuki](Screenshot/soal-17/fuyutsuki-conntrack.png)
+   *Entri `conntrack` pada `Fuyutsuki` menunjukkan aliran TCP ke port `9000` dari `192.212.4.58` ditranslasikan destinasinya ke `192.212.3.194` beserta translasi balik.*
+
+---
+
+## Soal 18 — Gerbang Monolith dan Radar
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Pengamanan zona sensitif (`Switch-Monolith` dan `Switch-Radar`) dikonfigurasi pada router **`Shigeru`** melalui [`scripts/soal-18-19-shigeru.sh`](./scripts/soal-18-19-shigeru.sh) (disimpan di `/root/shigeru.sh` dan dipanggil otomatis dari `/etc/network/interfaces`):
+- Aturan `iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT` mengizinkan balasan dari koneksi yang memang dimulai oleh node di dalam zona sensitif.
+- Aturan `iptables -A FORWARD -i eth0 -s 192.212.4.56/29 -p icmp --icmp-type echo-request -j ACCEPT` mengizinkan ping (`echo-request`) baru dari subnet `Switch-Terminal` (`192.212.4.56/29`) menuju zona sensitif.
+- Aturan `iptables -A FORWARD -i eth0 -j DROP` menutup koneksi baru lain yang datang dari sisi `Gendou` (`eth0`) ke zona Monolith & Radar tanpa perlu mendaftarkan satu per satu subnet di luar zona.
+
+### Bukti dan Hasil
+1. **Koneksi Keluar dari Zona Sensitif & Ping dari `Switch-Terminal` (`192.212.4.56/29`):**
+   ![Akses Keluar Zona dan Ping Terminal ke Monolith Radar](Screenshot/soal-18/shigeru-zona-allowed.png)
+   *Node di dalam zona (`Switch-Monolith` / `Switch-Radar`) tetap dapat memulai koneksi keluar, dan ping dari `Switch-Terminal` ke zona sensitif berhasil (`0% packet loss`).*
+
+2. **Pemblokiran Koneksi Baru dari Luar Zona (`Switch-Dummy` / `Switch-Geofront`):**
+   ![Blokir Koneksi Baru ke Zona Sensitif](Screenshot/soal-18/shigeru-zona-blocked.png)
+   *Koneksi baru dari luar zona yang masuk melalui `eth0` pada `Shigeru` ditolak (`DROP`), sementara balasan untuk sesi yang dimulai dari dalam zona tetap lolos.*
+
+---
+
+## Soal 19 — Isolasi Armisael
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Isolasi host **`Armisael`** (`192.212.4.83`) dilakukan secara bertingkat pada router **`Shigeru`** melalui [`scripts/soal-18-19-shigeru.sh`](./scripts/soal-18-19-shigeru.sh) dan pada lapisan bridge/host GNS3 melalui [`scripts/soal-19-host-isolasi-armisael.sh`](./scripts/soal-19-host-isolasi-armisael.sh):
+- Pada `Shigeru` (`iptables`), trafik `FORWARD` yang berasal dari maupun menuju `192.212.4.83` (serta `INPUT` dari `192.212.4.83`) di-`DROP` agar lintas-subnet terputus.
+- Karena aturan `iptables` di dalam container `Armisael` sendiri berisiko dimanipulasi dan tidak menghalangi trafik Layer 2 satu switch menuju **`Zeruel`**, pemblokiran frame berdasarkan alamat MAC `Armisael` diterapkan melalui `ebtables` pada bridge/host GNS3 tanpa mengganggu komunikasi `Zeruel`.
+
+### Bukti dan Hasil
+1. **Keterputusan Komunikasi `Armisael` (`192.212.4.83`) Menuju Gateway & `Zeruel`:**
+   ![Isolasi Total Armisael](Screenshot/soal-19/armisael-terisolasi.png)
+   *`Armisael` gagal menjangkau gateway maupun `Zeruel` (`100% packet loss` / koneksi gagal), dan tidak ada trafik dari `Armisael` yang masuk ke `Zeruel`.*
+
+2. **Kelangsungan Komunikasi `Zeruel` ke Jaringan & Gateway:**
+   ![Zeruel Tetap Berfungsi Saat Armisael Terisolasi](Screenshot/soal-19/zeruel-tetap-aman.png)
+   *`Zeruel` tetap dapat mengirim dan menerima trafik normal ke gateway dan host lain selama `Armisael` diisolasi.*
+
+---
+
+## Soal 20 — Uji Kebakaran Geofront
+
+> Dikerjakan oleh Naila Anggun Eka Rizqy (5027251122)
+
+### Implementasi
+Prosedur penyimpanan, penghapusan, dan pemulihan konfigurasi firewall/NAT secara idempoten diuji menggunakan [`scripts/soal-20-uji-kebakaran.sh`](./scripts/soal-20-uji-kebakaran.sh) (disimpan di `/root/uji-kebakaran.sh` pada node uji):
+- Konfigurasi aktif disimpan ke berkas menggunakan `iptables-save`, kemudian seluruh chain dan tabel `filter` serta `nat` dibersihkan (`iptables -F`, `iptables -X`, `iptables -t nat -F`, `iptables -t nat -X`) dan policy dikembalikan ke `ACCEPT`.
+- Pemulihan dijalankan **dua kali berturut-turut** (`iptables-restore` dan eksekusi ulang skrip konfigurasi node), lalu jumlah baris aturan pada `iptables -S` dan `iptables -t nat -S` dibandingkan antara pemulihan pertama dan kedua untuk memastikan tidak ada duplikasi maupun rule yang hilang.
+
+### Bukti dan Hasil
+1. **Hasil Pemulihan Berulang (`iptables-restore` & Eksekusi Ulang Skrip 2x Berturut-turut):**
+   ![Hasil Uji Kebakaran 2x Pemulihan](Screenshot/soal-20/uji-kebakaran-2x.png)
+   *Jumlah baris aturan pada `iptables -S` dan `iptables -t nat -S` pada pemulihan ke-1 dan ke-2 identik, membuktikan skrip konfigurasi idempoten dan aman dijalankan ulang.*
+
+2. **Verifikasi Fungsi Firewall & NAT Setelah Pemulihan:**
+   ![Verifikasi Aturan Setelah Uji Kebakaran](Screenshot/soal-20/verifikasi-pasca-kebakaran.png)
+   *Aturan `iptables -L -n -v` dan `iptables -t nat -L -n -v` tetap aktif sesuai kebijakan masing-masing node setelah proses pemulihan selesai.*
+```[cite: 5, 6, 7, 8, 9]

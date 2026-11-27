@@ -1,0 +1,25 @@
+#!/bin/sh
+# ==============================================================================
+# /root/fuyutsuki-trap.sh - Soal 17: Sihir Hitam di Jalur Paket (Fuyutsuki)
+#   Mengalihkan koneksi TCP dari Magi-Casper (192.212.4.58) ke Zeruel (192.212.4.82)
+#   agar menuju Pen-Pen (192.212.3.194), sementara balasan tetap tampak dari Zeruel
+#   dan trafik ICMP (ping) tidak dialihkan.
+# Praktikum Jarkom Modul 5 - Kelompok K-02
+# ==============================================================================
+
+set -u
+
+CASPER_IP="192.212.4.58"
+ZERUEL_IP="192.212.4.82"
+PENPEN_IP="192.212.3.194"
+FUYU_MAYA_IP="192.212.4.161"
+
+sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
+
+iptables -t nat -F
+iptables -t nat -X
+
+iptables -t nat -A PREROUTING -s "$CASPER_IP" -d "$ZERUEL_IP" -p tcp -j DNAT --to-destination "$PENPEN_IP"
+iptables -t nat -A POSTROUTING -s "$CASPER_IP" -d "$PENPEN_IP" -p tcp -j SNAT --to-source "$FUYU_MAYA_IP"
+
+echo "[OK] Fuyutsuki trap aktif: TCP Casper -> Zeruel dialihkan ke Pen-Pen (ping tidak dialihkan)."
